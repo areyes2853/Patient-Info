@@ -1,0 +1,67 @@
+
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: medical-app-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: medical_app
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - medical-app-network
+
+  # Backend Server
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: medical-app-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/medical_app?authSource=admin
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      - mongodb
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - medical-app-network
+
+  # Frontend Client
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: medical-app-client
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_FHIR_BASE_URL: http://localhost:3001/fhir
+      REACT_APP_DICOM_BASE_URL: https://dicomserver.co.uk:8989
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    networks:
+      - medical-app-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  medical-app-network:
+    driver: bridge
