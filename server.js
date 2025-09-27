@@ -5,18 +5,17 @@ const hl7 = require("simple-hl7");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-
 //test app is alive
 app.get("/", (req, res) => {
   res.send("<h1>Server is running</h1>");
-}); 
+});
 
 // fetch patient data from FHIR server
 app.get("/api/patient/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const response = await axios.get(
-      `https://hapi.fhir.org/baseR4/Patient/${id}`
+      `https://hapi.fhir.org/baseR4/Patient/49136689/_history/${id}`
     );
     res.json(response.data);
   } catch (error) {
