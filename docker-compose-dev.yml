@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: hl7-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: medical_app
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d  # Optional: for init scripts
+    networks:
+      - hl7-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Backend Server with Nodemon for Hot Reload
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: hl7-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"        # Express API
+      - "4000:4000"        # HL7 MLLP port
+      - "9229:9229"        # Node.js debugger port
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      HL7_PORT: 4000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/medical_app?authSource=admin
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      CORS_ORIGIN: http://localhost:3000
+      # FHIR Configuration
+      FHIR_BASE_URL: https://r4.smarthealthit.org
+      CLIENT_ID: my_medical_app
+      # DICOM Configuration
+      DICOM_BASE_URL: https://dicomserver.co.uk:8989
+      DICOM_QIDO_ENDPOINT: https://dicomserver.co.uk:8989/qido
+      DICOM_WADO_ENDPOINT: https://dicomserver.co.uk:8989/wado
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      - /app/node_modules
+      # Mount logs directory
+      - ./logs:/app/logs
+      # For VS Code debugging
+      - ./.vscode:/app/.vscode
+    networks:
+      - hl7-network
+    # Enable debugging
+    command: ["nodemon", "--inspect=0.0.0.0:9229", "--legacy-watch", "--poll-interval", "1000", "server.js"]
+    stdin_open: true
+    tty: true
+
+  # Frontend Client with React Hot Reload
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: hl7-client
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # React development settings for Docker
+      WATCHPACK_POLLING: 'true'
+      CHOKIDAR_USEPOLLING: 'true'
+      WDS_SOCKET_PORT: 3000
+      FAST_REFRESH: 'true'
+      # API Configuration
+      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_FHIR_BASE_URL: http://localhost:3001/api/fhir
+      REACT_APP_HL7_BASE_URL: http://localhost:3001/api/hl7
+      REACT_APP_DICOM_BASE_URL: https://dicomserver.co.uk:8989
+      # Feature flags
+      REACT_APP_ENABLE_DICOM: 'true'
+      REACT_APP_ENABLE_HL7: 'true'
+    volumes:
+      # Mount client source code
+      - ./client:/app
+      - /app/node_modules
+      # Mount public assets
+      - ./client/public:/app/public
+      - ./client/src:/app/src
+    networks:
+      - hl7-network
+    stdin_open: true
+    tty: true
+    depends_on:
+      - server
+
+  # Optional: Redis for session management and caching
+  redis:
+    image: redis:7-alpine
+    container_name: hl7-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hl7-network
+    command: redis-server --appendonly yes
+
+  # Optional: Adminer for database management
+  adminer:
+    image: adminer:4
+    container_name: hl7-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - hl7-network
+    environment:
+      ADMINER_DEFAULT_SERVER: mongodb
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  hl7-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
