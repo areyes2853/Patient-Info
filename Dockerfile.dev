@@ -1,0 +1,31 @@
+FROM node:18-alpine
+
+# Install nodemon globally for development
+RUN npm install -g nodemon
+
+# Install additional tools for development
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    bash
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including dev dependencies)
+RUN npm ci
+
+# Copy source code (will be overridden by volume mount in docker-compose)
+COPY . .
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose ports
+EXPOSE 3001 4000 9229
+
+# Default command (can be overridden in docker-compose)
+CMD ["nodemon", "--legacy-watch", "--poll-interval", "1000", "server.js"]
