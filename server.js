@@ -2,9 +2,16 @@ const express = require("express");
 const cors = require("cors");
 const hl7 = require("simple-hl7");
 const axios = require("axios");
+const morgan = require("morgan");
+const connectDB = require("./config/db");
 
 // Initialize Express app
 const app = express();
+//connect to MongoDB
+connectDB();
+
+// Use Morgan middleware with the 'dev' option for concise output
+app.use(morgan('dev'));
 
 // Ports configuration
 const EXPRESS_PORT = process.env.PORT || 3001; // Express API port
@@ -47,7 +54,7 @@ app.get("/", (req, res) => {
 });
 
 // FHIR endpoints
-app.get("/api/fhir/patients", async (req, res) => {
+app.get("/api/fhir/psatient", async (req, res) => {
   try {
     // Example FHIR patient endpoint
     const fhirBaseUrl =
