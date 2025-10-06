@@ -7,17 +7,16 @@ const connectDB = require("./config/db");
 
 // Initialize Express app
 const app = express();
-//connect to MongoDB
-connectDB();
 
-// Use Morgan middleware with the 'dev' option for concise output
-app.use(morgan('dev'));
-
-// Ports configuration
+// Ports configuration (MOVE THIS UP)
 const EXPRESS_PORT = process.env.PORT || 3001; // Express API port
 const HL7_PORT = process.env.HL7_PORT || 4000; // HL7 MLLP port
 
-// Middleware
+// Connect to MongoDB
+connectDB();
+
+// MIDDLEWARE MUST COME BEFORE ROUTES!
+app.use(morgan("dev"));
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "http://localhost:3000",
@@ -26,6 +25,11 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Root endpoint
+app.get("/", (req, res) =>
+  res.send("🏥 HL7 Medical Backend Server is running!")
+);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -40,53 +44,12 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Root endpoint
-app.get("/", (req, res) => {
-  res.json({
-    message: "🏥 HL7 Medical Backend Server",
-    version: "1.0.0",
-    endpoints: [
-      "GET /health - Health check",
-      "GET /api/fhir/patients - List FHIR patients",
-      "POST /api/hl7/send - Send HL7 message",
-    ],
-  });
-});
-
-// FHIR endpoints
-app.get("/api/fhir/psatient", async (req, res) => {
-  try {
-    // Example FHIR patient endpoint
-    const fhirBaseUrl =
-      process.env.FHIR_BASE_URL || "https://r4.smarthealthit.org";
-    const response = await axios.get(`${fhirBaseUrl}/Patient`, {
-      params: { _count: 10 },
-    });
-    res.json(response.data);
-  } catch (error) {
-    console.error("FHIR Error:", error.message);
-    res.status(500).json({
-      error: "Failed to fetch patients",
-      message: error.message,
-    });
-  }
-});
-
-// HL7 message endpoint
-app.post("/api/hl7/send", (req, res) => {
-  const { message } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ error: "Message is required" });
-  }
-
-  // Example HL7 message processing
-  res.json({
-    success: true,
-    message: "HL7 message received",
-    timestamp: new Date().toISOString(),
-  });
-});
+// API Routes (AFTER middleware setup)
+app.use("/api/get", require("./routes/api/get"));
+app.use("/api/post", require("./routes/api/post"));
+app.use("/api/users", require("./routes/api/users"));
+app.use("/api/auth", require("./routes/api/auth"));
+app.use("/api/profile", require("./routes/api/profile"));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -110,7 +73,12 @@ app.listen(EXPRESS_PORT, () => {
   console.log(
     `✅ Express API server running on http://localhost:${EXPRESS_PORT}`
   );
-  console.log(`📍 Health check: http://localhost:${EXPRESS_PORT}/health`);
+  console.log(`📍 Test endpoints:`);
+  console.log(`   GET  http://localhost:${EXPRESS_PORT}/`);
+  console.log(`   GET  http://localhost:${EXPRESS_PORT}/health`);
+  console.log(`   GET  http://localhost:${EXPRESS_PORT}/api/get`);
+  console.log(`   GET  http://localhost:${EXPRESS_PORT}/api/get/fhir/patients`);
+  console.log(`   POST http://localhost:${EXPRESS_PORT}/api/post/hl7/send`);
 });
 
 // HL7 Server Setup (MLLP)
@@ -119,12 +87,8 @@ const hl7Server = hl7.Server.createTcpServer();
 // HL7 message handler
 hl7Server.on("hl7", (message) => {
   console.log("Received HL7 message:", message.log());
-
-  // Parse and process HL7 message
   const messageType = message.get("MSH|9");
   console.log("Message Type:", messageType);
-
-  // Send ACK
   const ack = message.ack();
   message.respond(ack);
 });
@@ -141,13 +105,9 @@ console.log(`✅ HL7 MLLP server running on port ${HL7_PORT}`);
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("SIGTERM signal received: closing servers");
-
-  // Close Express server
   app.close(() => {
     console.log("Express server closed");
   });
-
-  // Close HL7 server
   hl7Server.close(() => {
     console.log("HL7 server closed");
     process.exit(0);
